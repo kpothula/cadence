@@ -2,6 +2,8 @@
 
 A no-build, static web app for planning bike rides. Open it, click the map, ride.
 
+**Live:** https://pothula.me/cadence/
+
 ```bash
 node serve.mjs        # → http://localhost:5173
 ```
