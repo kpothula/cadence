@@ -82,6 +82,11 @@
           <span class="track"></span>
           <span>Avoid towns &amp; city streets <em class="muted">(goes around built-up areas, can add distance)</em></span>
         </label>
+        <label class="switch">
+          <input type="checkbox" id="avoid-climbs">
+          <span class="track"></span>
+          <span>Avoid climbs <em class="muted">(prefers flatter roads where there's a choice)</em></span>
+        </label>
 
         <div class="stats" id="stats">
           <div class="stat hero"><span class="v" id="s-dist">0</span><span class="u">km</span><label>Distance</label></div>
@@ -183,6 +188,17 @@
           <div class="field">
             <span>Distance <output id="loop-km-out">50 km</output></span>
             <input type="range" id="loop-km" min="5" max="200" step="5" value="50">
+          </div>
+          <div class="field">
+            <span>Difficulty</span>
+            <div class="seg inline levels" id="loop-level" role="radiogroup" aria-label="Difficulty">
+              <button data-l="any" class="active">Any</button>
+              <button data-l="easy"><i class="lv lv1"></i>Easy</button>
+              <button data-l="moderate"><i class="lv lv2"></i>Moderate</button>
+              <button data-l="challenging"><i class="lv lv3"></i>Challenging</button>
+              <button data-l="hard"><i class="lv lv4"></i>Hard</button>
+            </div>
+            <small class="level-desc" id="level-desc"></small>
           </div>
           <div class="field" id="petals-field">
             <span>Laps through home <output id="petals-out"></output></span>

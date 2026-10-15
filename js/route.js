@@ -92,55 +92,74 @@ export async function routeLeg(a, b, brouterProfile) {
   return { coords, tags };
 }
 
-// ---------- "avoid towns" custom profiles ----------
-// The stock profile is patched so every way's cost is multiplied by how built-up the area is
-// (BRouter's estimated_town_class) and whether it's a residential street, then uploaded to BRouter.
+// ---------- custom profiles: avoid towns / avoid climbs ----------
+// Stock BRouter profiles (bundled in /profiles) are patched as text and uploaded to BRouter.
+
+// Avoid towns: multiply every way's cost by how built-up the area is (BRouter's
+// estimated_town_class) and whether it's a residential street.
 const CITY_MULT = `assign city_mult
   multiply switch estimated_town_class=6 2.6 switch estimated_town_class=5 2.2 switch estimated_town_class=4 1.9
            switch estimated_town_class=3 1.6 switch estimated_town_class=2 1.35 switch estimated_town_class=1 1.15 1
            switch highway=residential|living_street|service 1.6 1
 `;
-export function patchAvoidTowns(src) {
+function patchTowns(src) {
   const m = src.match(/^([ \t]*)assign([ \t]+)costfactor\b([ \t]*=)?/m);
   if (!m) throw new Error('Profile has no costfactor');
   return src.slice(0, m.index) + CITY_MULT + m[1] + 'assign costfactor multiply city_mult' + src.slice(m.index + m[0].length);
 }
 
-const customProfiles = new Map();   // base profile -> Promise<custom id>
+// Avoid climbs: switch on each profile's own uphill penalty.
+function patchClimbs(src) {
+  return src
+    .replace(/^(assign\s+uphillcost\s*=\s*)0\b/m, '$1120')                         // fastbike, trekking, safety
+    .replace(/^(assign\s+consider_elevation\s+)false\b/m, '$1true')                 // gravel
+    .replace(/^(assign\s+avoid_steep_inclines\s+)false\b/m, '$1true')               // gravel
+    .replace(/^(\s*assign\s+hills\s+)0\b/m, '$11');                                 // mtb
+}
+
+export function patchProfile(src, { towns, climbs }) {
+  if (climbs) src = patchClimbs(src);
+  if (towns) src = patchTowns(src);
+  return src;
+}
+
+const customProfiles = new Map();   // "base|towns|climbs" -> Promise<custom id>
 const PROFILE_TTL = 6 * 3600 * 1000;
-export function avoidTownsProfile(base, force = false) {
-  if (!force && customProfiles.has(base)) return customProfiles.get(base);
+const STORE_KEY = 'cadence.customProfiles';
+function customProfile(base, opts, force = false) {
+  const key = `${base}|${opts.towns ? 1 : 0}|${opts.climbs ? 1 : 0}`;
+  if (!force && customProfiles.has(key)) return customProfiles.get(key);
   const p = (async () => {
     if (!force) {
       try {
-        const c = JSON.parse(localStorage.getItem('cadence.cityProfiles') || '{}')[base];
+        const c = JSON.parse(localStorage.getItem(STORE_KEY) || '{}')[key];
         if (c && Date.now() - c.t < PROFILE_TTL) return c.id;
       } catch { /* storage unavailable */ }
     }
     const src = await (await fetch(`profiles/${base}.brf`)).text();
-    const res = await fetch(`${BROUTER}/profile`, { method: 'POST', body: patchAvoidTowns(src) });
+    const res = await fetch(`${BROUTER}/profile`, { method: 'POST', body: patchProfile(src, opts) });
     const j = await res.json();
-    if (!j.profileid || j.error) throw new Error(j.error || 'Could not set up the avoid-towns profile');
+    if (!j.profileid || j.error) throw new Error(j.error || 'Could not set up the custom routing profile');
     try {
-      const all = JSON.parse(localStorage.getItem('cadence.cityProfiles') || '{}');
-      all[base] = { id: j.profileid, t: Date.now() };
-      localStorage.setItem('cadence.cityProfiles', JSON.stringify(all));
+      const all = JSON.parse(localStorage.getItem(STORE_KEY) || '{}');
+      all[key] = { id: j.profileid, t: Date.now() };
+      localStorage.setItem(STORE_KEY, JSON.stringify(all));
     } catch { /* storage unavailable */ }
     return j.profileid;
   })();
-  p.catch(() => customProfiles.delete(base));
-  customProfiles.set(base, p);
+  p.catch(() => customProfiles.delete(key));
+  customProfiles.set(key, p);
   return p;
 }
 
-// Routes with the stock profile, or with the uploaded avoid-towns variant (re-uploading if it expired).
-export async function routeLegWith(a, b, base, avoidTowns) {
-  if (!avoidTowns) return routeLeg(a, b, base);
+// Routes with the stock profile, or with an uploaded custom variant (re-uploading if it expired).
+export async function routeLegWith(a, b, base, opts = {}) {
+  if (!opts.towns && !opts.climbs) return routeLeg(a, b, base);
   try {
-    return await routeLeg(a, b, await avoidTownsProfile(base));
+    return await routeLeg(a, b, await customProfile(base, opts));
   } catch (err) {
     if (!/profile|custom|not found|file/i.test(err.message)) throw err;
-    return routeLeg(a, b, await avoidTownsProfile(base, true));
+    return routeLeg(a, b, await customProfile(base, opts, true));
   }
 }
 
@@ -335,16 +354,55 @@ export function analyze(track, profileId, v0) {
     if (s.network) networkDist += len;
   }
 
-  const effort = total / 1000 + ascent / 25;
-  const difficulty = effort < 35 ? [1, 'Easy'] : effort < 75 ? [2, 'Moderate'] : effort < 130 ? [3, 'Challenging'] : effort < 200 ? [4, 'Hard'] : [5, 'Epic'];
 
   return {
     total, ascent, descent, maxGrade, time: cumTime[pts.length - 1],
     prof: { d, e, g }, step, gradeAt, segSpeed, cumTime,
-    surfaceDist, wayDist, networkDist, difficulty,
+    surfaceDist, wayDist, networkDist,
     minEle: Math.min(...e), maxEle: Math.max(...e),
     climbs: findClimbs(d, e),
   };
+}
+
+// ---------- terrain difficulty ----------
+// How hard the terrain is, independent of distance: climbing per km, steepest grade,
+// rough surfaces (for the bike you're on) and how much is on busy roads.
+export const LEVELS = [
+  { id: 'easy',        label: 'Easy',        cpk: [0, 5],   grade: 6,  rough: 0.1,  busy: 0.1,  desc: 'Flat-ish, smooth and quiet. Up to ~5 m of climbing per km, nothing steeper than 6%.' },
+  { id: 'moderate',    label: 'Moderate',    cpk: [5, 10],  grade: 10, rough: 0.25, busy: 0.25, desc: 'Rolling. 5–10 m of climbing per km, short ramps up to ~10%.' },
+  { id: 'challenging', label: 'Challenging', cpk: [10, 16], grade: 14, rough: 0.5,  busy: 0.5,  desc: 'Hilly. 10–16 m of climbing per km, climbs up to ~14%.' },
+  { id: 'hard',        label: 'Hard',        cpk: [16, 99], grade: 99, rough: 1,    busy: 1,    desc: 'Mountainous. 16+ m of climbing per km and steep walls — as hilly as the area allows.' },
+];
+
+export function terrainOf(a, profileId) {
+  const kind = PROFILES[profileId].kind;
+  const km = Math.max(0.1, a.total / 1000);
+  const cpk = a.ascent / km;
+  const share = k => (a.surfaceDist[k] || 0) / a.total;
+  const rough = kind === 'mtb' ? 0 : kind === 'gravel' ? share('dirt') : share('gravel') + share('dirt') + share('cobbles') * 0.5;
+  const busy = (a.wayDist.busy || 0) / a.total;
+  let level = LEVELS.findIndex(l => cpk < l.cpk[1]);
+  if (level < 0) level = LEVELS.length - 1;
+  const reasons = [`${cpk.toFixed(1)} m climbing per km`];
+  // Steep ramps can raise the level all the way; rough surfaces up to Challenging; traffic only stops a ride being Easy.
+  for (let i = 0; i < LEVELS.length - 1; i++) {
+    if (a.maxGrade > LEVELS[i].grade && level <= i) { level = i + 1; reasons.push(`ramps up to ${a.maxGrade.toFixed(0)}%`); }
+    if (i < 2 && rough > LEVELS[i].rough && level <= i) { level = i + 1; reasons.push(`${Math.round(rough * 100)}% rough surface`); }
+    if (i < 1 && busy > LEVELS[i].busy && level <= i) { level = i + 1; reasons.push(`${Math.round(busy * 100)}% on busy roads`); }
+  }
+  return { level, ...LEVELS[level], cpk, rough, busy, reasons: [...new Set(reasons)] };
+}
+
+// Lower is a better match for the wanted level (index into LEVELS).
+export function terrainScore(t, a, want, targetDist) {
+  const L = LEVELS[want];
+  const outside = t.cpk < L.cpk[0] ? L.cpk[0] - t.cpk : t.cpk > L.cpk[1] ? t.cpk - L.cpk[1] : 0;
+  return outside * 2
+    + Math.max(0, a.maxGrade - L.grade)
+    + Math.max(0, t.rough - L.rough) * 30
+    + Math.max(0, t.busy - L.busy) * 20
+    + Math.abs(a.total - targetDist) / targetDist * 40
+    + Math.max(0, Math.abs(a.total - targetDist) / targetDist - 0.12) * 200;   // well off the distance: only as a last resort
 }
 
 // Strava-style climb detection on the smoothed profile.

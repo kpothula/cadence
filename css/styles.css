@@ -477,3 +477,9 @@ input[type="range"] { accent-color: var(--brand); width: 100%; }
 .elev-stats dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
 @media (max-width: 1280px) { .grade-legend { display: none; } }
 @media (max-width: 820px) { .elev-stats div:nth-child(n+5) { display: none; } .elev-stats { gap: 10px; } }
+.levels button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 6px 4px; font-size: 11.5px; }
+.lv { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.lv1 { background: #12a150; } .lv2 { background: #2e90fa; } .lv3 { background: #f79009; } .lv4 { background: #d92d20; }
+.seg.inline button.active .lv { box-shadow: 0 0 0 2px #fff; }
+.level-desc { font-size: 11.5px; color: var(--muted); line-height: 1.35; }
+.tabpane > .switch { margin-top: -4px; }

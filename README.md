@@ -24,8 +24,10 @@ Any static file server works (ES modules need http://, not file://).
   - **Orbit**: rides out, circles around home and comes back, so you're never far away.
   - **Half orbit**: a semicircle around home. Fewer junctions, still close enough to bail out.
   - **Classic**: one big loop.
+- **Difficulty** for generated loops: Easy, Moderate, Challenging or Hard. Each level is judged on climbing per km, steepest grade, rough surface (for your bike) and busy roads. The generator compares four loops in different directions and keeps the best match. If the area can't deliver that level, it says so. The Plan tab's difficulty badge uses the same scale (hover it to see why).
+- **Avoid climbs**: switches on each profile's own uphill penalty, so the route prefers flatter roads where there's a choice. Easy loops turn it on automatically.
 - **Cut it short**: for any round trip, it lists the kilometres where you pass the start (with elapsed time), and how far from home you ever get. **Show shortcuts home** routes back from several points and draws them on the map, with the distance saved.
-- **Avoid towns & city streets**: uploads a patched BRouter profile (bundled in `profiles/`) that penalises built-up areas and residential streets. Works with every bike type.
+- **Avoid towns & city streets**: uploads a patched BRouter profile (bundled in `profiles/`) that penalises built-up areas and residential streets. Works with every bike type, and can be combined with Avoid climbs.
 - **No dead-end detours**: generated loops move any point that sends you down a dead end and back onto the junction. For routes you draw yourself, the Waypoints card offers a "Remove detours" fix.
 - **Reverse, out & back, return to start.**
 - **GPX export / import** (or drop a .gpx on the map). Imported tracks stay editable.
@@ -44,7 +46,7 @@ Any static file server works (ES modules need http://, not file://).
 | `js/weather.js` | Open-Meteo wind and weather along the route |
 | `js/gpx.js` | GPX read/write |
 | `js/geo.js` | Distance, bearing and destination maths |
-| `profiles/*.brf` | Stock BRouter profiles, patched at runtime for "avoid towns" |
+| `profiles/*.brf` | Stock BRouter profiles, patched at runtime for "avoid towns" / "avoid climbs" |
 | `serve.mjs` | Tiny static dev server |
 
 Uses free public services: BRouter (routing), Photon (search), Open-Meteo (weather and elevation), and OSM / CyclOSM / OpenTopoMap / Esri / CARTO tiles. Be gentle with them; for heavy use, run your own BRouter instance.

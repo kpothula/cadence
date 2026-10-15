@@ -1,5 +1,5 @@
 import {
-  PROFILES, SURFACE, WAYTYPE, GRADE_BANDS, gradeColor,
+  PROFILES, SURFACE, WAYTYPE, GRADE_BANDS, LEVELS, gradeColor, terrainOf, terrainScore,
   routeLegWith, straightLeg, fixedLeg, fillElevation, buildTrack, analyze,
 } from './route.js';
 import { ElevationChart } from './elevation-chart.js';
@@ -36,6 +36,7 @@ const state = {
   profile: 'road',
   snap: true,
   avoidTowns: false,
+  avoidClimbs: false,
   colorBy: 'gradient',
   speeds: { ...DEFAULT_SPEEDS },
   name: '',
@@ -115,8 +116,8 @@ function changed() {
   recompute();
 }
 function persist() {
-  const { waypoints, profile, snap, avoidTowns, colorBy, speeds, name, routeId } = state;
-  if (!store.set('cadence.current', { waypoints, profile, snap, avoidTowns, colorBy, speeds, name, routeId })) {
+  const { waypoints, profile, snap, avoidTowns, avoidClimbs, colorBy, speeds, name, routeId } = state;
+  if (!store.set('cadence.current', { waypoints, profile, snap, avoidTowns, avoidClimbs, colorBy, speeds, name, routeId })) {
     store.set('cadence.current', { waypoints: waypoints.map(w => ({ ...w, fixed: null, mode: w.mode === 'fixed' ? 'route' : w.mode })), profile, snap, colorBy, speeds, name, routeId });
   }
 }
@@ -129,13 +130,13 @@ const resolved = new Set();
 let routeSeq = 0;
 
 const legKey = (a, b) => b.mode === 'fixed' ? `fixed|${b.id}` :
-  [b.mode, b.mode === 'route' ? PROFILES[state.profile].brouter + (state.avoidTowns ? '+towns' : '') : '', a.lat.toFixed(6), a.lng.toFixed(6), b.lat.toFixed(6), b.lng.toFixed(6)].join('|');
+  [b.mode, b.mode === 'route' ? PROFILES[state.profile].brouter + (state.avoidTowns ? '+towns' : '') + (state.avoidClimbs ? '+flat' : '') : '', a.lat.toFixed(6), a.lng.toFixed(6), b.lat.toFixed(6), b.lng.toFixed(6)].join('|');
 
 function getLeg(a, b) {
   if (b.mode === 'fixed' && b.fixed) return Promise.resolve(fixedLeg(b.fixed));
   const key = legKey(a, b);
   if (!legCache.has(key)) {
-    const p = (b.mode === 'line' ? straightLeg(a, b) : routeLegWith(a, b, PROFILES[state.profile].brouter, state.avoidTowns))
+    const p = (b.mode === 'line' ? straightLeg(a, b) : routeLegWith(a, b, PROFILES[state.profile].brouter, { towns: state.avoidTowns, climbs: state.avoidClimbs }))
       .then(v => { resolved.add(key); return v; })
       .catch(err => { legCache.delete(key); throw err; });
     legCache.set(key, p);
@@ -395,8 +396,10 @@ function renderStats() {
   $('#s-time').textContent = a ? fmtTime(a.time) : '0:00';
   $('#s-max').textContent = a ? a.maxGrade.toFixed(1) : '0';
   const diff = $('#s-diff');
-  diff.className = 'badge' + (a ? ` d${a.difficulty[0]}` : '');
-  diff.textContent = a ? a.difficulty[1] : '—';
+  const terrain = a ? terrainOf(a, state.profile) : null;
+  diff.className = 'badge' + (terrain ? ` d${terrain.level + 1}` : '');
+  diff.textContent = terrain ? terrain.label : '—';
+  diff.title = terrain ? `${terrain.label} terrain: ${terrain.reasons.join(', ')}` : '';
   $('#elev-stats').innerHTML = a ? [
     ['Gain', `↑ ${Math.round(a.ascent)} m`], ['Loss', `↓ ${Math.round(a.descent)} m`],
     ['High', `${Math.round(a.maxEle)} m`], ['Low', `${Math.round(a.minEle)} m`],
@@ -723,7 +726,7 @@ function renderWind() {
 }
 
 // ---------- loop generator ----------
-let loopDir = 'any', loopShape = 'petals', loopPetals = 'auto';
+let loopDir = 'any', loopShape = 'petals', loopPetals = 'auto', loopLevel = 'any';
 const autoPetals = km => km <= 25 ? 2 : km <= 60 ? 3 : km <= 120 ? 4 : 5;
 
 // Each shape returns the via points in riding order; HOME marks a pass through the start.
@@ -765,8 +768,28 @@ async function generateLoop() {
   const start = startWp ? [startWp.lat, startWp.lng] : [map.getCenter().lat, map.getCenter().lng];
   const shape = SHAPES[loopShape];
   const n = loopPetals === 'auto' ? autoPetals(km) : +loopPetals;
+  const want = LEVELS.findIndex(l => l.id === loopLevel);
   btn.classList.add('busy');
   $('#loop-status').textContent = 'Exploring roads…';
+  let note = '';
+  if (want >= 0 && state.avoidClimbs !== (want === 0)) {
+    // Easy loops route around climbs; harder ones shouldn't.
+    state.avoidClimbs = want === 0;
+    $('#avoid-climbs').checked = state.avoidClimbs;
+    note = state.avoidClimbs ? ' “Avoid climbs” is now on.' : ' “Avoid climbs” is now off.';
+  }
+  const evaluate = c => {
+    const an = analyze(buildTrack(c.legs), state.profile, state.speeds[state.profile]);
+    const t = terrainOf(an, state.profile);
+    return { ...c, dist: an.total, an, t, score: want >= 0 ? terrainScore(t, an, want, target) : 0 };
+  };
+  const route = async (h, r, jit, sign) => {
+    const home = () => newWp(start[0], start[1], startWp?.name || null, 'route');
+    const wps = [home(), ...shape.build(start, h, r, jit, sign, n).map(p => p === HOME ? home() : newWp(p[0], p[1], null, 'route')), home()];
+    const legs = await trimSpurs(wps, await Promise.all(wps.slice(1).map((b, k) => getLeg(wps[k], b))));
+    return { wps, legs, dist: legs.reduce((sum, l) => sum + pathLength(l.coords), 0), h, r };
+  };
+  const freshJitter = () => Array.from({ length: 8 }, () => ({ a: (Math.random() - 0.5) * 30, r: 0.85 + Math.random() * 0.3 }));
   try {
     let heading;
     if (loopDir === 'any') heading = Math.random() * 360;
@@ -782,15 +805,13 @@ async function generateLoop() {
     for (let attempt = 0; attempt < 4 && !best; attempt++) {
       const h = heading + attempt * 47 * (attempt % 2 ? 1 : -1);
       const sign = Math.random() < 0.5 ? 1 : -1;
-      const jit = Array.from({ length: 8 }, () => ({ a: (Math.random() - 0.5) * 30, r: 0.85 + Math.random() * 0.3 }));
+      const jit = freshJitter();
       let r = target / (shape.k || n * 2.4 * 1.25);
       try {
         for (let iter = 0; iter < 5; iter++) {
-          const home = () => newWp(start[0], start[1], startWp?.name || null, 'route');
-          const wps = [home(), ...shape.build(start, h, r, jit, sign, n).map(p => p === HOME ? home() : newWp(p[0], p[1], null, 'route')), home()];
-          const legs = await trimSpurs(wps, await Promise.all(wps.slice(1).map((b, k) => getLeg(wps[k], b))));
-          const dist = legs.reduce((sum, l) => sum + pathLength(l.coords), 0);
-          if (!best || Math.abs(dist - target) < Math.abs(best.dist - target)) best = { wps, dist };
+          const c = await route(h, r, jit, sign);
+          const dist = c.dist;
+          if (!best || Math.abs(dist - target) < Math.abs(best.dist - target)) best = c;
           if (Math.abs(dist - target) / target < 0.07) break;
           $('#loop-status').textContent = `Tuning the loop… (${fmtKm(dist)} km so far)`;
           r *= Math.min(1.8, Math.max(0.55, target / dist));
@@ -801,6 +822,25 @@ async function generateLoop() {
       }
     }
     if (!best) throw lastErr || new Error('No loop found');
+
+    // For a chosen difficulty, try the same size of loop in other directions and keep the best match.
+    let picked = '';
+    if (want >= 0) {
+      const cands = [evaluate(best)];
+      const offsets = loopDir === 'any' ? [90, 180, 270] : [-35, 35, 0];
+      for (const [k, off] of offsets.entries()) {
+        $('#loop-status').textContent = `Comparing loops for ${LEVELS[want].label.toLowerCase()} terrain… (${k + 2}/4)`;
+        try {
+          cands.push(evaluate(await route(best.h + off, best.r, freshJitter(), Math.random() < 0.5 ? 1 : -1)));
+        } catch { /* that direction hit water — skip it */ }
+      }
+      cands.sort((x, y) => x.score - y.score);
+      best = cands[0];
+      const t = best.t;
+      picked = ` Best of ${cands.length} for ${LEVELS[want].label}: ${t.cpk.toFixed(1)} m/km climbing, steepest ${best.an.maxGrade.toFixed(0)}%.`;
+      if (t.level < want) picked += ` This area is flatter than ${LEVELS[want].label} — it's the hilliest loop nearby.`;
+      else if (t.level > want) picked += ` This area is harder than ${LEVELS[want].label} — it's the gentlest loop nearby${t.reasons.length > 1 ? ` (${t.reasons.slice(1).join(', ')})` : ''}.`;
+    }
     const label = loopShape === 'petals' ? `${km} km cloverleaf` : loopShape === 'orbit' ? `${km} km orbit` : loopShape === 'arc' ? `${km} km half orbit` : `${km} km loop`;
     commit(() => { state.waypoints = best.wps; state.name = label; state.routeId = null; });
     $('#route-name').value = state.name;
@@ -808,7 +848,7 @@ async function generateLoop() {
     if (!startWp) lookupName(best.wps[0].id);
     map.fitBounds(best.wps.map(w => [w.lat, w.lng]), { padding: [60, 60] });
     const tail = loopShape === 'classic' ? '' : ' See “Cut it short” on the Plan tab for where you can head home.';
-    $('#loop-status').textContent = `Got ${fmtKm(best.dist)} km.${tail} Generate again for a different one, or drag the line to tweak it.`;
+    $('#loop-status').textContent = `Got ${fmtKm(best.dist)} km.${picked}${note}${tail} Generate again for a different one, or drag the line to tweak it.`;
     btn.lastChild.textContent = 'Generate another';
   } catch (err) {
     $('#loop-status').textContent = 'Couldn\'t build a loop here — try another distance or direction.';
@@ -1102,6 +1142,12 @@ $('#avoid-towns').addEventListener('change', e => {
   persist();
   recompute();
 });
+$('#avoid-climbs').checked = state.avoidClimbs;
+$('#avoid-climbs').addEventListener('change', e => {
+  state.avoidClimbs = e.target.checked;
+  persist();
+  recompute();
+});
 $('#snap').checked = state.snap;
 $('#snap').addEventListener('change', e => { state.snap = e.target.checked; persist(); });
 $('#route-name').value = state.name;
@@ -1136,10 +1182,14 @@ function syncLoopUI() {
   $('#petals-out').textContent = `${n} × ~${Math.round(+$('#loop-km').value / n)} km`;
   $$('#loop-shape .shape').forEach(b => b.setAttribute('aria-checked', b.dataset.shape === loopShape));
   $$('#loop-petals button').forEach(b => b.classList.toggle('active', b.dataset.n === loopPetals));
+  $$('#loop-level button').forEach(b => b.classList.toggle('active', b.dataset.l === loopLevel));
+  const lv = LEVELS.find(l => l.id === loopLevel);
+  $('#level-desc').textContent = lv ? `${lv.desc} Compares 4 loops and keeps the best match.` : 'Any terrain — fastest to generate.';
 }
 $('#loop-km').addEventListener('input', syncLoopUI);
 $$('#loop-shape .shape').forEach(b => b.addEventListener('click', () => { loopShape = b.dataset.shape; syncLoopUI(); }));
 $$('#loop-petals button').forEach(b => b.addEventListener('click', () => { loopPetals = b.dataset.n; syncLoopUI(); }));
+$$('#loop-level button').forEach(b => b.addEventListener('click', () => { loopLevel = b.dataset.l; syncLoopUI(); }));
 syncLoopUI();
 $$('#loop-dir button').forEach(b => b.addEventListener('click', () => {
   loopDir = b.dataset.dir;
