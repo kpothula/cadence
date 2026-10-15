@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "cadence", "runtimeExecutable": "node", "runtimeArgs": ["serve.mjs", "5173"], "port": 5173 }
+  ]
+}

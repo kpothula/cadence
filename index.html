@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Cadence — cycling route planner</title>
+  <meta name="description" content="Plan cycling routes with surface breakdown, climbs, wind forecast and loop generation.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%236d28d9'/%3E%3Cpath d='M7 22c4-10 8 2 11-6s5-6 7-6' fill='none' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></symbol>
+      <symbol id="i-redo" viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></symbol>
+      <symbol id="i-reverse" viewBox="0 0 24 24"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></symbol>
+      <symbol id="i-outback" viewBox="0 0 24 24"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></symbol>
+      <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></symbol>
+      <symbol id="i-locate" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7.5"/><path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3"/></symbol>
+      <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></symbol>
+      <symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></symbol>
+      <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
+      <symbol id="i-save" viewBox="0 0 24 24"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></symbol>
+      <symbol id="i-wind" viewBox="0 0 24 24"><path d="M17.7 7.7a2.5 2.5 0 1 1 1.8 4.3H2"/><path d="M9.6 4.6A2 2 0 1 1 11 8H2"/><path d="M12.6 19.4A2 2 0 1 0 14 16H2"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+      <symbol id="i-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+      <symbol id="i-shuffle" viewBox="0 0 24 24"><path d="m18 14 4 4-4 4"/><path d="m18 2 4 4-4 4"/><path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.7-1.1 2-1.7 3.3-1.7H22"/><path d="M2 6h1.9c1.5 0 2.9.9 3.6 2.2"/><path d="M22 18h-5.9c-1.3 0-2.6-.7-3.3-1.8l-.5-.8"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></symbol>
+      <symbol id="i-loop" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4v4"/></symbol>
+      <symbol id="i-mountain" viewBox="0 0 24 24"><path d="m8 3 4 8 5-5 5 15H2L8 3z"/></symbol>
+    </defs>
+  </svg>
+
+  <div class="app">
+    <aside class="panel" aria-label="Route planner">
+      <div class="panel-head">
+        <header class="brand">
+          <div class="logo" aria-hidden="true">
+            <svg viewBox="0 0 32 32"><path d="M6 22c4-10 8 2 11-6s5-6 9-6"/></svg>
+          </div>
+          <div>
+            <h1>Cadence</h1>
+            <p>Plan rides worth riding</p>
+          </div>
+        </header>
+
+        <div class="search" role="combobox" aria-expanded="false" aria-haspopup="listbox">
+          <svg class="ic"><use href="#i-search"/></svg>
+          <input id="search" type="search" placeholder="Search a place or paste lat, lng" autocomplete="off" aria-label="Search places">
+          <ul id="search-results" class="search-results" role="listbox" hidden></ul>
+        </div>
+
+        <div class="toolbar" role="toolbar" aria-label="Route tools">
+          <button class="tool" id="btn-undo" title="Undo (⌘Z)"><svg class="ic"><use href="#i-undo"/></svg></button>
+          <button class="tool" id="btn-redo" title="Redo (⇧⌘Z)"><svg class="ic"><use href="#i-redo"/></svg></button>
+          <span class="sep"></span>
+          <button class="tool" id="btn-reverse" title="Reverse direction"><svg class="ic"><use href="#i-reverse"/></svg><span>Reverse</span></button>
+          <button class="tool" id="btn-outback" title="Ride back the same way"><svg class="ic"><use href="#i-outback"/></svg><span>Out &amp; back</span></button>
+          <button class="tool" id="btn-home" title="Route back to start"><svg class="ic"><use href="#i-home"/></svg><span>To start</span></button>
+          <span class="sep"></span>
+          <button class="tool danger" id="btn-clear" title="Clear route"><svg class="ic"><use href="#i-trash"/></svg></button>
+        </div>
+
+        <nav class="tabs" role="tablist">
+          <button role="tab" class="tab active" data-tab="plan" aria-selected="true">Plan</button>
+          <button role="tab" class="tab" data-tab="loop" aria-selected="false">Loop generator</button>
+          <button role="tab" class="tab" data-tab="saved" aria-selected="false">Saved <span id="saved-count" class="count"></span></button>
+        </nav>
+      </div>
+
+      <!-- PLAN -->
+      <section class="tabpane" id="tab-plan" role="tabpanel">
+        <div class="profiles" id="profiles" role="radiogroup" aria-label="Bike type"></div>
+        <label class="switch">
+          <input type="checkbox" id="avoid-towns">
+          <span class="track"></span>
+          <span>Avoid towns &amp; city streets <em class="muted">(goes around built-up areas, can add distance)</em></span>
+        </label>
+
+        <div class="stats" id="stats">
+          <div class="stat hero"><span class="v" id="s-dist">0</span><span class="u">km</span><label>Distance</label></div>
+          <div class="stat hero"><span class="v" id="s-asc">0</span><span class="u">m</span><label>Climbing</label></div>
+          <div class="stat hero"><span class="v" id="s-time">0:00</span><span class="u">h</span><label>Moving time</label></div>
+          <div class="stat"><span class="v sm" id="s-desc">0</span><span class="u">m</span><label>Descent</label></div>
+          <div class="stat"><span class="v sm" id="s-max">0</span><span class="u">%</span><label>Steepest</label></div>
+          <div class="stat"><span class="badge" id="s-diff">—</span><label>Difficulty</label></div>
+        </div>
+        <div class="pace">
+          <label for="pace">Flat pace</label>
+          <input id="pace" type="range" min="10" max="40" step="1">
+          <output id="pace-out">27 km/h</output>
+        </div>
+
+        <div class="card" id="card-bail" hidden>
+          <div class="card-h"><h3><svg class="ic"><use href="#i-home"/></svg> Cut it short</h3><span class="muted" id="bail-max"></span></div>
+          <div id="bail-out"></div>
+        </div>
+
+        <div class="card" id="card-breakdown">
+          <div class="card-h"><h3>What you'll ride on</h3><span class="muted" id="network-share"></span></div>
+          <div class="bd-title">Surface</div>
+          <div class="bar" id="bar-surface"></div>
+          <ul class="legend" id="leg-surface"></ul>
+          <div class="bd-title">Way type</div>
+          <div class="bar" id="bar-way"></div>
+          <ul class="legend" id="leg-way"></ul>
+        </div>
+
+        <div class="card" id="card-climbs">
+          <div class="card-h"><h3>Climbs</h3><span class="muted" id="climb-count"></span></div>
+          <ul class="climbs" id="climbs"></ul>
+        </div>
+
+        <div class="card" id="card-wind">
+          <div class="card-h"><h3><svg class="ic"><use href="#i-wind"/></svg> Wind &amp; weather</h3></div>
+          <div class="row">
+            <label class="field grow">
+              <span>Departure</span>
+              <input type="datetime-local" id="depart">
+            </label>
+            <button class="btn" id="btn-wind">Check forecast</button>
+          </div>
+          <div id="wind-out" class="wind-out"></div>
+        </div>
+
+        <div class="card" id="card-wps">
+          <div class="card-h"><h3>Waypoints</h3><span class="muted" id="wp-count"></span></div>
+          <ol class="wps" id="wps"></ol>
+          <div class="tip bad" id="spur-tip" hidden><span></span><button class="btn" id="btn-spurs">Remove detours</button></div>
+          <p class="hint-text">Click the map to add a point · drag the line to reshape · right-click a point to remove it.</p>
+          <label class="switch">
+            <input type="checkbox" id="snap" checked>
+            <span class="track"></span>
+            <span>New sections follow roads <em class="muted">(off = straight line, for ferries or missing paths)</em></span>
+          </label>
+        </div>
+
+        <div class="card" id="card-export">
+          <label class="field">
+            <span>Route name</span>
+            <input type="text" id="route-name" placeholder="Untitled ride" maxlength="80">
+          </label>
+          <div class="row wrap">
+            <button class="btn primary" id="btn-save"><svg class="ic"><use href="#i-save"/></svg>Save</button>
+            <button class="btn" id="btn-gpx"><svg class="ic"><use href="#i-download"/></svg>GPX</button>
+            <button class="btn" id="btn-share"><svg class="ic"><use href="#i-link"/></svg>Copy link</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- LOOP -->
+      <section class="tabpane" id="tab-loop" role="tabpanel" hidden>
+        <div class="card">
+          <h3>Generate a round trip</h3>
+          <p class="muted">Starts at your first waypoint, or the map centre if you haven't placed one. Uses the bike type from the Plan tab.</p>
+          <div class="field">
+            <span>Shape</span>
+            <div class="shapes" id="loop-shape" role="radiogroup" aria-label="Loop shape">
+              <button class="shape" role="radio" data-shape="petals" aria-checked="true">
+                <svg viewBox="0 0 48 48"><path d="M24 24C14 22 8 14 12 8s12 2 12 16zM24 24c10-2 16-10 12-16s-12 2-12 16zM24 24c-4 9 0 18 0 18s4-9 0-18z"/><circle cx="24" cy="24" r="3.5"/></svg>
+                <b>Cloverleaf</b><small>Laps that pass home — stop after any of them</small>
+              </button>
+              <button class="shape" role="radio" data-shape="orbit" aria-checked="false">
+                <svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="15"/><path d="M24 24V9"/><circle cx="24" cy="24" r="3.5"/></svg>
+                <b>Orbit</b><small>Circles around home, never far away</small>
+              </button>
+              <button class="shape" role="radio" data-shape="arc" aria-checked="false">
+                <svg viewBox="0 0 48 48"><path d="M9 30a15 15 0 0 1 30 0"/><path d="M24 34 9 30M24 34l15-4"/><circle cx="24" cy="34" r="3.5"/></svg>
+                <b>Half orbit</b><small>A semicircle out and back — fewer stops, still close to home</small>
+              </button>
+              <button class="shape" role="radio" data-shape="classic" aria-checked="false">
+                <svg viewBox="0 0 48 48"><ellipse cx="24" cy="18" rx="15" ry="12"/><circle cx="24" cy="30" r="3.5"/></svg>
+                <b>Classic</b><small>One big loop, most variety</small>
+              </button>
+            </div>
+          </div>
+          <div class="field">
+            <span>Distance <output id="loop-km-out">50 km</output></span>
+            <input type="range" id="loop-km" min="5" max="200" step="5" value="50">
+          </div>
+          <div class="field" id="petals-field">
+            <span>Laps through home <output id="petals-out"></output></span>
+            <div class="seg inline" id="loop-petals">
+              <button data-n="auto" class="active">Auto</button><button data-n="2">2</button><button data-n="3">3</button><button data-n="4">4</button><button data-n="5">5</button>
+            </div>
+          </div>
+          <div class="field">
+            <span>Head out towards</span>
+            <div class="compass" id="loop-dir">
+              <button data-dir="any" class="active">Any</button>
+              <button data-dir="wind" title="Ride into the wind first, tailwind home">Into wind</button>
+              <button data-dir="0">N</button><button data-dir="45">NE</button>
+              <button data-dir="90">E</button><button data-dir="135">SE</button>
+              <button data-dir="180">S</button><button data-dir="225">SW</button>
+              <button data-dir="270">W</button><button data-dir="315">NW</button>
+            </div>
+          </div>
+          <button class="btn primary wide" id="btn-loop"><svg class="ic"><use href="#i-loop"/></svg>Generate loop</button>
+          <p class="muted small" id="loop-status"></p>
+        </div>
+      </section>
+
+      <!-- SAVED -->
+      <section class="tabpane" id="tab-saved" role="tabpanel" hidden>
+        <div class="card">
+          <div class="row wrap">
+            <button class="btn" id="btn-import"><svg class="ic"><use href="#i-upload"/></svg>Import GPX</button>
+            <button class="btn" id="btn-new"><svg class="ic"><use href="#i-plus"/></svg>New route</button>
+          </div>
+          <input type="file" id="file-gpx" accept=".gpx,application/gpx+xml" hidden>
+          <p class="muted small">You can also drop a .gpx file onto the map. Saved routes are stored in this browser.</p>
+        </div>
+        <ul class="saved" id="saved"></ul>
+      </section>
+
+      <footer class="foot">Routing <a href="https://brouter.de" target="_blank" rel="noopener">BRouter</a> · Search <a href="https://photon.komoot.io" target="_blank" rel="noopener">Photon</a> · Weather <a href="https://open-meteo.com" target="_blank" rel="noopener">Open‑Meteo</a> · Data © OpenStreetMap</footer>
+    </aside>
+
+    <main class="mapwrap" id="mapwrap">
+      <div id="map" aria-label="Map"></div>
+
+      <div class="map-ui">
+        <div class="seg" id="color-by" role="radiogroup" aria-label="Colour route by">
+          <button data-c="gradient">Gradient</button>
+          <button data-c="surface">Surface</button>
+          <button data-c="way">Way type</button>
+          <button data-c="plain">Plain</button>
+        </div>
+        <ul class="map-legend" id="map-legend"></ul>
+      </div>
+      <button class="fab" id="btn-locate" title="Show my location"><svg class="ic"><use href="#i-locate"/></svg></button>
+      <div class="map-hint" id="hint"></div>
+      <div class="loading" id="loading" hidden><span class="spinner"></span>Finding the best roads…</div>
+      <div class="dropzone" id="dropzone" hidden>Drop GPX to import</div>
+
+      <section class="elevation" id="elevation" aria-label="Elevation profile">
+        <div class="elev-head">
+          <h3><svg class="ic"><use href="#i-mountain"/></svg>Elevation</h3>
+          <dl class="elev-stats" id="elev-stats"></dl>
+          <ul class="grade-legend" id="grade-legend"></ul>
+          <button class="tool" id="btn-elev-toggle" title="Collapse"><svg class="ic"><use href="#i-chev"/></svg></button>
+        </div>
+        <div class="elev-body">
+          <canvas id="elev-canvas"></canvas>
+          <div class="elev-tip" hidden></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
